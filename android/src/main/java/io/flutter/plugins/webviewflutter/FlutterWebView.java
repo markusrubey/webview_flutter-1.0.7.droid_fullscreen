@@ -7,23 +7,29 @@ package io.flutter.plugins.webviewflutter;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.Context;
-import android.content.pm.ActivityInfo;
+import android.content.DialogInterface;
+import android.graphics.Color;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.view.View;
+import android.view.WindowManager;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -31,10 +37,6 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.platform.PlatformView;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class FlutterWebView implements PlatformView, MethodCallHandler {
   private static final String JS_CHANNEL_NAMES_FIELD = "javascriptChannelNames";
@@ -42,43 +44,40 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
   private final MethodChannel methodChannel;
   private final FlutterWebViewClient flutterWebViewClient;
   private final Handler platformThreadHandler;
+  private Dialog customViewDialog;
 
   // Verifies that a url opened by `Window.open` has a secure url.
   private class FlutterWebChromeClient extends WebChromeClient {
 
     private static final String TAG = "FlutterWebChromeClient";
-    private boolean isFullscreen = false;
-    private WebChromeClient.CustomViewCallback customViewCallback;
-    private View customView;
-    private int currentUiSettings;
 
 
     @Override
     public boolean onCreateWindow(
-        final WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+            final WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
       final WebViewClient webViewClient =
-          new WebViewClient() {
-            @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public boolean shouldOverrideUrlLoading(
-                @NonNull WebView view, @NonNull WebResourceRequest request) {
-              final String url = request.getUrl().toString();
-              if (!flutterWebViewClient.shouldOverrideUrlLoading(
-                  FlutterWebView.this.webView, request)) {
-                webView.loadUrl(url);
-              }
-              return true;
-            }
+              new WebViewClient() {
+                @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+                @Override
+                public boolean shouldOverrideUrlLoading(
+                        @NonNull WebView view, @NonNull WebResourceRequest request) {
+                  final String url = request.getUrl().toString();
+                  if (!flutterWebViewClient.shouldOverrideUrlLoading(
+                          FlutterWebView.this.webView, request)) {
+                    webView.loadUrl(url);
+                  }
+                  return true;
+                }
 
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-              if (!flutterWebViewClient.shouldOverrideUrlLoading(
-                  FlutterWebView.this.webView, url)) {
-                webView.loadUrl(url);
-              }
-              return true;
-            }
-          };
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                  if (!flutterWebViewClient.shouldOverrideUrlLoading(
+                          FlutterWebView.this.webView, url)) {
+                    webView.loadUrl(url);
+                  }
+                  return true;
+                }
+              };
 
       final WebView newWebView = new WebView(view.getContext());
       newWebView.setWebViewClient(webViewClient);
@@ -92,44 +91,35 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
 
     @SuppressLint("SourceLockedOrientationActivity")
     @Override
-    public void onShowCustomView(View view, CustomViewCallback callback) {
+    public void onShowCustomView(View view, final CustomViewCallback callback) {
       super.onShowCustomView(view, callback);
-      if (customView != null) {
-        callback.onCustomViewHidden();
-        return;
-      }
-      customView = view;
-      customViewCallback = callback;
       Activity activity = WebViewFlutterPlugin.activityRef.get();
       if (activity != null) {
-        ((FrameLayout)activity.getWindow().getDecorView()).addView(view);
-        View currentView = activity.getWindow().getDecorView();
-        this.currentUiSettings = currentView.getSystemUiVisibility();
-        currentView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE);
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        customViewDialog = new Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        view.setBackgroundColor(Color.BLACK);
+        customViewDialog.setContentView(view);
+        customViewDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+          @Override
+          public void onDismiss(DialogInterface dialog) {
+            callback.onCustomViewHidden();
+            onHideCustomView();
+          }
+        });
+        customViewDialog.show();
+        if (customViewDialog.getWindow() != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+          customViewDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+          customViewDialog.getWindow().setNavigationBarColor(Color.BLACK);
+          customViewDialog.getWindow().setStatusBarColor(Color.BLACK);
+        }
       }
-      isFullscreen = true;
-      onScreenStateChanged(true);
     }
 
     @SuppressLint("SourceLockedOrientationActivity")
     @Override
     public void onHideCustomView() {
-      if (customView == null) return;
-
-      Activity activity = WebViewFlutterPlugin.activityRef.get();
-
-      if (activity != null) {
-        ((FrameLayout) activity.getWindow().getDecorView()).removeView(this.customView);
-        this.customView = null;
-        activity.getWindow().getDecorView().setSystemUiVisibility(this.currentUiSettings);
-        activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-
-        customViewCallback.onCustomViewHidden();
+      if (customViewDialog != null) {
+        customViewDialog.dismiss();
       }
-      isFullscreen = false;
-      onScreenStateChanged(false);
       super.onHideCustomView();
     }
 
@@ -138,31 +128,20 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
     public void onPermissionRequest(PermissionRequest request) {
       request.grant(request.getResources());
     }
-
-    boolean onBackPressed() {
-      if (isFullscreen) onHideCustomView();
-      return isFullscreen;
-    }
-
-    private void onScreenStateChanged(boolean isFullscreen) {
-      Map<String, Object> args = new HashMap<>();
-      args.put("isLandscape", isFullscreen);
-      methodChannel.invokeMethod("onScreenStateChanged", args);
-    }
   }
 
   @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
   @SuppressWarnings("unchecked")
   FlutterWebView(
-      final Context context,
-      BinaryMessenger messenger,
-      int id,
-      Map<String, Object> params,
-      View containerView) {
+          final Context context,
+          BinaryMessenger messenger,
+          int id,
+          Map<String, Object> params,
+          View containerView) {
 
     DisplayListenerProxy displayListenerProxy = new DisplayListenerProxy();
     DisplayManager displayManager =
-        (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
+            (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
     displayListenerProxy.onPreWebViewInitialization(displayManager);
     webView = new InputAwareWebView(context, containerView);
     displayListenerProxy.onPostWebViewInitialization(displayManager);
@@ -362,13 +341,13 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
       throw new UnsupportedOperationException("JavaScript string cannot be null");
     }
     webView.evaluateJavascript(
-        jsString,
-        new android.webkit.ValueCallback<String>() {
-          @Override
-          public void onReceiveValue(String value) {
-            result.success(value);
-          }
-        });
+            jsString,
+            new android.webkit.ValueCallback<String>() {
+              @Override
+              public void onReceiveValue(String value) {
+                result.success(value);
+              }
+            });
   }
 
   @SuppressWarnings("unchecked")
@@ -435,7 +414,7 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
           final boolean hasNavigationDelegate = (boolean) settings.get(key);
 
           final WebViewClient webViewClient =
-              flutterWebViewClient.createWebViewClient(hasNavigationDelegate);
+                  flutterWebViewClient.createWebViewClient(hasNavigationDelegate);
 
           webView.setWebViewClient(webViewClient);
           break;
@@ -482,7 +461,7 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
   private void registerJavaScriptChannelNames(List<String> channelNames) {
     for (String channelName : channelNames) {
       webView.addJavascriptInterface(
-          new JavaScriptChannel(methodChannel, channelName, platformThreadHandler), channelName);
+              new JavaScriptChannel(methodChannel, channelName, platformThreadHandler), channelName);
     }
   }
 
