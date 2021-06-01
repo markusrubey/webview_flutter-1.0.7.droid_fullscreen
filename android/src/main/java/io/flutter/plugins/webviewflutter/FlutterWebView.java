@@ -15,6 +15,7 @@ import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.PermissionRequest;
@@ -52,6 +53,7 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
     private static final String TAG = "FlutterWebChromeClient";
 
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onCreateWindow(
             final WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
@@ -81,6 +83,14 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
 
       final WebView newWebView = new WebView(view.getContext());
       newWebView.setWebViewClient(webViewClient);
+      newWebView.setVerticalScrollBarEnabled(false);
+      newWebView.setHorizontalScrollBarEnabled(false);
+      newWebView.setOnTouchListener(new View.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+          return (event.getAction() == MotionEvent.ACTION_MOVE);
+        }
+      });
 
       final WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
       transport.setWebView(newWebView);
