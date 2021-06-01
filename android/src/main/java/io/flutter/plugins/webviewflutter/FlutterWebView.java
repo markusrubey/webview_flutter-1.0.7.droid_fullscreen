@@ -83,14 +83,6 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
 
       final WebView newWebView = new WebView(view.getContext());
       newWebView.setWebViewClient(webViewClient);
-      newWebView.setVerticalScrollBarEnabled(false);
-      newWebView.setHorizontalScrollBarEnabled(false);
-      newWebView.setOnTouchListener(new View.OnTouchListener() {
-        @Override
-        public boolean onTouch(View v, MotionEvent event) {
-          return (event.getAction() == MotionEvent.ACTION_MOVE);
-        }
-      });
 
       final WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
       transport.setWebView(newWebView);
@@ -154,6 +146,8 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
             (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);
     displayListenerProxy.onPreWebViewInitialization(displayManager);
     webView = new InputAwareWebView(context, containerView);
+    webView.setVerticalScrollBarEnabled(false);
+    webView.setHorizontalScrollBarEnabled(false);
     displayListenerProxy.onPostWebViewInitialization(displayManager);
 
     platformThreadHandler = new Handler(context.getMainLooper());

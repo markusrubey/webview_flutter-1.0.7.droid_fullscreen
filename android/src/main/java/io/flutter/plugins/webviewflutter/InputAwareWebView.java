@@ -4,16 +4,18 @@
 
 package io.flutter.plugins.webviewflutter;
 
-import static android.content.Context.INPUT_METHOD_SERVICE;
-
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Rect;
 import android.os.Build;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 import android.widget.ListPopupWindow;
+
+import static android.content.Context.INPUT_METHOD_SERVICE;
 
 /**
  * A WebView subclass that mirrors the same implementation hacks that the system WebView does in
@@ -218,6 +220,16 @@ final class InputAwareWebView extends WebView {
       return;
     }
     super.onFocusChanged(focused, direction, previouslyFocusedRect);
+  }
+
+  @SuppressLint("ClickableViewAccessibility")
+  @Override
+  public boolean onTouchEvent(MotionEvent event) {
+    if (event.getAction() == MotionEvent.ACTION_MOVE) {
+      return false;
+    } else {
+      return super.onTouchEvent(event);
+    }
   }
 
   private boolean isCalledFromListPopupWindowShow() {
